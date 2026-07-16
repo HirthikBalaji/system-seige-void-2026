@@ -17,6 +17,8 @@ interface BackendAuditEntry {
   resourceType: string;
   resourceId: string | null;
   details: unknown;
+  prevHash: string;
+  entryHash: string;
   createdAt: string;
 }
 
@@ -58,6 +60,8 @@ export async function GET(req: NextRequest) {
         resourceType: e.resourceType,
         resourceId: e.resourceId,
         details: JSON.stringify(e.details ?? {}),
+        prevHash: e.prevHash,
+        entryHash: e.entryHash,
       })),
     );
   } catch (error) {
