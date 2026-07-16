@@ -1,0 +1,37 @@
+{
+  "name": "secrets-platform-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Backend services (vault, cert lifecycle, audit log, AI scanner) for the Enterprise Secrets & Certificate Lifecycle Platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file=.env dist/server.js",
+    "prisma:generate": "prisma generate",
+    "migrate:dev": "node --env-file=.env scripts/with-owner-db.mjs npx prisma migrate dev",
+    "migrate:deploy": "node --env-file=.env scripts/with-owner-db.mjs npx prisma migrate deploy",
+    "harden:db": "node --env-file=.env scripts/apply-db-hardening.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.7.4",
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "esbuild@0.28.1": true,
+    "prisma@5.22.0": true
+  }
+}

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Separate Express/Postgres service with its own tooling — not part of
+    // this Next.js app's lint/type project.
+    "backend/**",
   ]),
 ]);
 

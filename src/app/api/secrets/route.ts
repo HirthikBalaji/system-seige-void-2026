@@ -1,66 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiRequest, handleApiError, ApiError } from '@/lib/api-helper';
-import { encrypt, decrypt } from '@/lib/encryption';
-import prisma from '@/lib/prisma';
-import { logEvent } from '@/lib/audit';
+import { callBackend, BackendError } from '@/lib/backendClient';
 import crypto from 'crypto';
+
+// Thin proxy over our Express/Postgres vault service — see backend/. This
+// route no longer does its own encryption or storage; it only resolves the
+// gateway session, mints a scoped JWT, and translates between the
+// dashboard's existing contract and the backend's actual one.
+
+interface BackendSecretMeta {
+  id: string;
+  name: string;
+  version: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BackendSecretValue {
+  id: string;
+  name: string;
+  value: string;
+  version: number;
+}
 
 export async function GET(req: NextRequest) {
   try {
-    const { tenantId, user, ipAddress, userAgent } = await verifyApiRequest(req, 'secrets:read');
+    const { tenantId, user } = await verifyApiRequest(req, 'secrets:read');
+    const identity = { tenantId, userId: user.id, role: user.role };
     const { searchParams } = new URL(req.url);
     const secretId = searchParams.get('id');
     const reveal = searchParams.get('reveal') === 'true';
 
     if (secretId) {
-      // Fetch single secret
-      const secret = await prisma.secret.findUnique({
-        where: { id: secretId }
-      });
-
-      if (!secret || secret.tenantId !== tenantId) {
-        throw new ApiError(404, 'Secret not found');
-      }
-
       if (reveal) {
-        // Decrypt the secret value
-        const decryptedValue = decrypt(secret.value);
-        
-        await logEvent({
-          userId: user.id,
-          email: user.email,
-          tenantId,
-          ipAddress,
-          userAgent,
-          action: 'Secret Decrypted',
-          result: 'SUCCESS',
-          details: { secretId, name: secret.name }
-        });
-
-        return NextResponse.json({
-          ...secret,
-          value: decryptedValue
-        });
+        try {
+          const secret = await callBackend<BackendSecretValue>(`/internal/vault/secrets/${secretId}`, identity);
+          return NextResponse.json(secret);
+        } catch (err) {
+          if (err instanceof BackendError && err.status === 404) {
+            throw new ApiError(404, 'Secret not found');
+          }
+          throw err;
+        }
       }
 
-      return NextResponse.json({
-        ...secret,
-        value: '********' // masked
-      });
+      const { secrets } = await callBackend<{ secrets: BackendSecretMeta[] }>('/internal/vault/secrets', identity);
+      const found = secrets.find((s) => s.id === secretId);
+      if (!found) throw new ApiError(404, 'Secret not found');
+      return NextResponse.json({ ...found, value: '********' });
     }
 
-    // List all secrets for tenant
-    const secrets = await prisma.secret.findMany({
-      where: { tenantId },
-      orderBy: { updatedAt: 'desc' }
-    });
-
-    const maskedSecrets = secrets.map((s: any) => ({
-      ...s,
-      value: '********'
-    }));
-
-    return NextResponse.json(maskedSecrets);
+    const { secrets } = await callBackend<{ secrets: BackendSecretMeta[] }>('/internal/vault/secrets', identity);
+    return NextResponse.json(secrets.map((s) => ({ ...s, value: '********' })));
   } catch (error) {
     return handleApiError(error);
   }
@@ -68,7 +60,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { tenantId, user, ipAddress, userAgent } = await verifyApiRequest(req, 'secrets:create');
+    const { tenantId, user } = await verifyApiRequest(req, 'secrets:create');
     const body = await req.json();
     const { name, value } = body;
 
@@ -76,35 +68,13 @@ export async function POST(req: NextRequest) {
       throw new ApiError(400, 'Name and Value are required');
     }
 
-    // Encrypt the value
-    const encryptedValue = encrypt(value);
-
-    const secret = await prisma.secret.create({
-      data: {
-        name,
-        value: encryptedValue,
-        tenantId,
-        createdBy: user.id
-      }
+    const identity = { tenantId, userId: user.id, role: user.role };
+    const created = await callBackend('/internal/vault/secrets', identity, {
+      method: 'POST',
+      body: { name, value },
     });
 
-    await logEvent({
-      userId: user.id,
-      email: user.email,
-      tenantId,
-      ipAddress,
-      userAgent,
-      action: 'Secret Created',
-      result: 'SUCCESS',
-      details: { secretId: secret.id, name }
-    });
-
-    return NextResponse.json({
-      id: secret.id,
-      name: secret.name,
-      version: secret.version,
-      createdAt: secret.createdAt
-    });
+    return NextResponse.json(created);
   } catch (error) {
     return handleApiError(error);
   }
@@ -113,62 +83,34 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, name, value, action } = body;
+    const { id, value, action } = body;
 
     if (!id) {
       throw new ApiError(400, 'Secret ID is required');
     }
 
-    // Handle rotation permission check vs normal update check
     const requiredPermission = action === 'rotate' ? 'secrets:rotate' : 'secrets:update';
-    const { tenantId, user, ipAddress, userAgent } = await verifyApiRequest(req, requiredPermission);
+    const { tenantId, user } = await verifyApiRequest(req, requiredPermission);
+    const identity = { tenantId, userId: user.id, role: user.role };
 
-    const existingSecret = await prisma.secret.findUnique({
-      where: { id }
-    });
-
-    if (!existingSecret || existingSecret.tenantId !== tenantId) {
-      throw new ApiError(404, 'Secret not found');
+    // Auto-generate a secure random value for rotation, same as before.
+    const finalValue = action === 'rotate' ? crypto.randomBytes(16).toString('hex') : value;
+    if (!finalValue) {
+      throw new ApiError(400, 'A new value is required to update a secret');
     }
 
-    let finalValue = existingSecret.value;
-    let actionLogName = 'Secret Updated';
-
-    if (action === 'rotate') {
-      // Auto-generate a secure 32-character hex key for rotation
-      const rotatedPlaintext = crypto.randomBytes(16).toString('hex');
-      finalValue = encrypt(rotatedPlaintext);
-      actionLogName = 'Secret Rotated';
-    } else if (value) {
-      finalValue = encrypt(value);
-    }
-
-    const updatedSecret = await prisma.secret.update({
-      where: { id },
-      data: {
-        name: name || existingSecret.name,
-        value: finalValue,
-        version: existingSecret.version + 1
+    try {
+      const updated = await callBackend(`/internal/vault/secrets/${id}`, identity, {
+        method: 'PATCH',
+        body: { value: finalValue },
+      });
+      return NextResponse.json(updated);
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 404) {
+        throw new ApiError(404, 'Secret not found');
       }
-    });
-
-    await logEvent({
-      userId: user.id,
-      email: user.email,
-      tenantId,
-      ipAddress,
-      userAgent,
-      action: actionLogName,
-      result: 'SUCCESS',
-      details: { secretId: id, name: updatedSecret.name, version: updatedSecret.version }
-    });
-
-    return NextResponse.json({
-      id: updatedSecret.id,
-      name: updatedSecret.name,
-      version: updatedSecret.version,
-      updatedAt: updatedSecret.updatedAt
-    });
+      throw err;
+    }
   } catch (error) {
     return handleApiError(error);
   }
@@ -176,7 +118,7 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { tenantId, user, ipAddress, userAgent } = await verifyApiRequest(req, 'secrets:delete');
+    const { tenantId, user } = await verifyApiRequest(req, 'secrets:delete');
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -184,28 +126,15 @@ export async function DELETE(req: NextRequest) {
       throw new ApiError(400, 'Secret ID is required');
     }
 
-    const existingSecret = await prisma.secret.findUnique({
-      where: { id }
-    });
-
-    if (!existingSecret || existingSecret.tenantId !== tenantId) {
-      throw new ApiError(404, 'Secret not found');
+    const identity = { tenantId, userId: user.id, role: user.role };
+    try {
+      await callBackend(`/internal/vault/secrets/${id}`, identity, { method: 'DELETE' });
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 404) {
+        throw new ApiError(404, 'Secret not found');
+      }
+      throw err;
     }
-
-    await prisma.secret.delete({
-      where: { id }
-    });
-
-    await logEvent({
-      userId: user.id,
-      email: user.email,
-      tenantId,
-      ipAddress,
-      userAgent,
-      action: 'Secret Deleted',
-      result: 'SUCCESS',
-      details: { secretId: id, name: existingSecret.name }
-    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
