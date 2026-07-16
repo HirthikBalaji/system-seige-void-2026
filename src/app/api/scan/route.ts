@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyApiRequest, handleApiError, ApiError } from '@/lib/api-helper';
 import { callBackend } from '@/lib/backendClient';
+import { decryptApiKey } from '@/lib/scanKeyExchange';
 
 // Thin proxy over our Express AI scanner — a real two-stage pipeline
 // (deterministic regex/entropy pre-filter, then an actual LLM call with
@@ -34,17 +35,30 @@ export async function POST(req: NextRequest) {
   try {
     const { tenantId, user } = await verifyApiRequest(req, 'secrets:create');
     const body = await req.json();
-    const { text, filename } = body;
+    const { text, filename, encryptedApiKey } = body;
 
     if (!text) {
       throw new ApiError(400, 'Content to scan is required');
     }
 
+    // Bring-your-own-key: the browser encrypted this against our public key
+    // (see /api/scan/key) so it never crossed the wire in the clear. We
+    // decrypt it here and forward the plaintext to the backend over the
+    // trusted internal hop — never logged, never stored.
+    let apiKey: string | undefined;
+    if (encryptedApiKey) {
+      try {
+        apiKey = await decryptApiKey(encryptedApiKey);
+      } catch {
+        throw new ApiError(400, 'Could not decrypt the provided API key — please try again');
+      }
+    }
+
     const identity = { tenantId, userId: user.id, role: user.role };
-    const result = await callBackend<{ findings: BackendFinding[]; modelUsed: string; isMocked: boolean }>(
+    const result = await callBackend<{ findings: BackendFinding[]; modelUsed: string; isMocked: boolean; usedOwnKey: boolean }>(
       '/internal/scanner/scan',
       identity,
-      { method: 'POST', body: { source: filename || 'unnamed_source.txt', content: text } },
+      { method: 'POST', body: { source: filename || 'unnamed_source.txt', content: text, apiKey } },
     );
 
     const findings = result.findings.map((f) => ({
@@ -70,6 +84,7 @@ export async function POST(req: NextRequest) {
       summary,
       isMocked: result.isMocked,
       modelUsed: result.modelUsed,
+      usedOwnKey: result.usedOwnKey,
     });
   } catch (error) {
     return handleApiError(error);

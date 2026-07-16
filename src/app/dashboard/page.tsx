@@ -24,7 +24,10 @@ import {
   AlertTriangle,
   Radar,
   Building2,
+  KeySquare,
+  Info,
 } from 'lucide-react';
+import { encryptWithPublicKeyPem } from '@/lib/browserCrypto';
 
 type Tab = 'secrets' | 'certs' | 'scanner' | 'audit' | 'users';
 
@@ -87,6 +90,7 @@ interface ScanResult {
   summary: string;
   isMocked: boolean;
   modelUsed: string;
+  usedOwnKey: boolean;
 }
 
 interface Member {
@@ -227,6 +231,8 @@ export default function Dashboard() {
   const [scanFilename, setScanFilename] = useState('');
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [ownApiKey, setOwnApiKey] = useState('');
+  const [showOwnKeyInput, setShowOwnKeyInput] = useState(false);
 
   const [secretForm, setSecretForm] = useState({ name: '', value: '' });
   const [certForm, setCertForm] = useState({ name: '', domain: '', data: '', expiresAt: '' });
@@ -491,10 +497,23 @@ export default function Dashboard() {
     setScanning(true);
     setScanResult(null);
     try {
+      let encryptedApiKey: string | undefined;
+      if (ownApiKey.trim()) {
+        // Fetch the gateway's public key fresh each time and encrypt
+        // client-side — the plaintext key never leaves the browser.
+        const keyRes = await fetch('/api/scan/key');
+        if (keyRes.ok) {
+          const { publicKey } = await keyRes.json();
+          encryptedApiKey = await encryptWithPublicKeyPem(publicKey, ownApiKey.trim());
+        } else {
+          alert('Could not fetch the encryption key — falling back to the shared server key for this scan.');
+        }
+      }
+
       const res = await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: scanText, filename: scanFilename || 'unnamed_source.txt' }),
+        body: JSON.stringify({ text: scanText, filename: scanFilename || 'unnamed_source.txt', encryptedApiKey }),
       });
       if (!res.ok) {
         const err = await res.json();
@@ -884,6 +903,54 @@ export default function Dashboard() {
                     <label className="form-label">Code / File Content to Scan</label>
                     <textarea className="textarea input" style={{ height: '200px', fontSize: '0.8125rem' }} placeholder="Paste code or config text here… (e.g. const AWS_KEY = 'AKIAIOSFODNN7EXAMPLE')" value={scanText} onChange={(e) => setScanText(e.target.value)} required />
                   </div>
+
+                  <div style={{ marginBottom: '1.25rem', borderRadius: 'var(--r-md)', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowOwnKeyInput((v) => !v)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.5rem',
+                        padding: '0.7rem 0.9rem',
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <KeySquare size={15} color="var(--accent-cyan)" />
+                        Use your own Anthropic API key
+                        {ownApiKey.trim() && <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Active</span>}
+                      </span>
+                      <span style={{ fontSize: '0.72rem' }}>{showOwnKeyInput ? 'Hide' : 'Optional'}</span>
+                    </button>
+                    {showOwnKeyInput && (
+                      <div style={{ padding: '0 0.9rem 0.9rem' }}>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          className="input"
+                          placeholder="sk-ant-…"
+                          value={ownApiKey}
+                          onChange={(e) => setOwnApiKey(e.target.value)}
+                          style={{ marginBottom: '0.5rem' }}
+                        />
+                        <p className="subtle" style={{ fontSize: '0.72rem', display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
+                          <Info size={13} style={{ flexShrink: 0, marginTop: '0.15rem' }} />
+                          Encrypted in your browser (RSA-OAEP) before it's sent — the server only ever sees ciphertext
+                          on the wire, decrypts it in memory for this one scan, and never stores or logs it. Leave
+                          blank to use the shared demo key instead.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <button type="submit" disabled={scanning} className="btn btn-primary">
                     {scanning ? <Loader2 className="spin" size={15} /> : <Radar size={15} />}
                     {scanning ? 'Analyzing Exposures…' : 'Run Security Audit'}
@@ -902,10 +969,13 @@ export default function Dashboard() {
                       </span>
                     </h3>
                   </div>
-                  <p className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem' }}>
+                  <p className="muted" style={{ fontSize: '0.8125rem', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     {scanResult.isMocked
                       ? 'Executed via local regex/entropy pre-filter only — live LLM classification was unavailable for this scan.'
                       : `Classified by ${scanResult.modelUsed || 'Anthropic Claude'} after the deterministic pre-filter stage.`}
+                    {scanResult.usedOwnKey && (
+                      <span className="badge badge-cyan"><KeySquare size={11} />Your API key</span>
+                    )}
                   </p>
                   <p style={{ fontWeight: 500, marginBottom: '1.25rem' }}>{scanResult.summary}</p>
 
