@@ -21,6 +21,8 @@ ALTER TABLE secrets       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE certificates  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_findings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rotation_logs   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sandbox_sessions ENABLE ROW LEVEL SECURITY;
 
 -- FORCE means even the table owner (platform_owner) is bound by these
 -- policies. Belt-and-suspenders: the owner never serves traffic anyway, but
@@ -29,6 +31,8 @@ ALTER TABLE secrets       FORCE ROW LEVEL SECURITY;
 ALTER TABLE certificates  FORCE ROW LEVEL SECURITY;
 ALTER TABLE audit_log     FORCE ROW LEVEL SECURITY;
 ALTER TABLE scan_findings FORCE ROW LEVEL SECURITY;
+ALTER TABLE rotation_logs   FORCE ROW LEVEL SECURITY;
+ALTER TABLE sandbox_sessions FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS tenant_isolation ON secrets;
 CREATE POLICY tenant_isolation ON secrets
@@ -44,6 +48,18 @@ CREATE POLICY tenant_isolation ON certificates
 
 DROP POLICY IF EXISTS tenant_isolation ON scan_findings;
 CREATE POLICY tenant_isolation ON scan_findings
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON rotation_logs;
+CREATE POLICY tenant_isolation ON rotation_logs
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON sandbox_sessions;
+CREATE POLICY tenant_isolation ON sandbox_sessions
   FOR ALL
   USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
   WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
@@ -165,6 +181,8 @@ GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON secrets       TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON certificates  TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON scan_findings TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON rotation_logs   TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON sandbox_sessions TO app_user;
 
 -- audit_log: no UPDATE/DELETE grant at all — the trigger is a second,
 -- independent layer on top of this, not a substitute for it.
