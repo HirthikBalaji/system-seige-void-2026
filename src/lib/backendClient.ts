@@ -71,25 +71,36 @@ export async function callBackend<T = unknown>(
 ): Promise<T> {
   const token = await mintBackendToken(identity);
 
-  const response = await fetch(`${BACKEND_URL}${path}`, {
-    method: init?.method ?? 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    cache: 'no-store',
-  });
+  try {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+      method: init?.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(init?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: 'no-store',
+    });
 
-  if (response.status === 204) {
-    return undefined as T;
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new BackendError(response.status, (data as { error?: string }).error ?? 'backend request failed');
+    }
+
+    return data as T;
+  } catch (err: any) {
+    if (err instanceof BackendError) {
+      throw err;
+    }
+    console.error('Connection to backend failed:', err.message);
+    throw new BackendError(
+      503,
+      'Backend service is offline (connection refused). Please make sure the backend database and server are started.',
+    );
   }
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new BackendError(response.status, (data as { error?: string }).error ?? 'backend request failed');
-  }
-
-  return data as T;
 }

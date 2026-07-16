@@ -97,9 +97,18 @@ export async function verifyApiRequest(req: Request, requiredPermission?: string
   }
 }
 
+import { BackendError } from './backendClient';
+
 export function handleApiError(err: any) {
   console.error('API Error:', err);
-  const statusCode = err instanceof ApiError ? err.statusCode : 500;
+  
+  let statusCode = 500;
+  if (err instanceof ApiError) {
+    statusCode = err.statusCode;
+  } else if (err instanceof BackendError) {
+    statusCode = err.status;
+  }
+  
   const message = err.message || 'Internal Server Error';
   
   return new Response(JSON.stringify({ error: message }), {
