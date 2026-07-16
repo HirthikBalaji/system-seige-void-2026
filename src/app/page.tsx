@@ -125,12 +125,12 @@ export default function LandingPage() {
           </svg>
           <p style={{ marginTop: '1rem', color: '#a1a1aa', fontSize: '0.875rem' }}>Verifying Zero Trust Session...</p>
         </div>
-        <style jsx global>{`
+        <style dangerouslySetInnerHTML={{__html: `
           @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
           }
-        `}</style>
+        `}} />
       </div>
     );
   }
