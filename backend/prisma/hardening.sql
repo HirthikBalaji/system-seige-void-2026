@@ -23,16 +23,33 @@ ALTER TABLE audit_log     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_findings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rotation_logs   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sandbox_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workload_identities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workload_certificates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE autonomous_revocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE digital_twin_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE digital_twin_edges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blast_radius_simulations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE federated_intelligence_models ENABLE ROW LEVEL SECURITY;
+ALTER TABLE global_intelligence_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE risk_cards ENABLE ROW LEVEL SECURITY;
 
 -- FORCE means even the table owner (platform_owner) is bound by these
 -- policies. Belt-and-suspenders: the owner never serves traffic anyway, but
 -- this closes off "just connect as owner" as a bypass path entirely.
 ALTER TABLE secrets       FORCE ROW LEVEL SECURITY;
 ALTER TABLE certificates  FORCE ROW LEVEL SECURITY;
-ALTER TABLE audit_log     FORCE ROW LEVEL SECURITY;
+ALTER TABLE audit_log     NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE scan_findings FORCE ROW LEVEL SECURITY;
 ALTER TABLE rotation_logs   FORCE ROW LEVEL SECURITY;
 ALTER TABLE sandbox_sessions FORCE ROW LEVEL SECURITY;
+ALTER TABLE workload_identities FORCE ROW LEVEL SECURITY;
+ALTER TABLE workload_certificates FORCE ROW LEVEL SECURITY;
+ALTER TABLE autonomous_revocations FORCE ROW LEVEL SECURITY;
+ALTER TABLE digital_twin_nodes FORCE ROW LEVEL SECURITY;
+ALTER TABLE digital_twin_edges FORCE ROW LEVEL SECURITY;
+ALTER TABLE blast_radius_simulations FORCE ROW LEVEL SECURITY;
+ALTER TABLE federated_intelligence_models FORCE ROW LEVEL SECURITY;
+ALTER TABLE risk_cards FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS tenant_isolation ON secrets;
 CREATE POLICY tenant_isolation ON secrets
@@ -60,6 +77,67 @@ CREATE POLICY tenant_isolation ON rotation_logs
 
 DROP POLICY IF EXISTS tenant_isolation ON sandbox_sessions;
 CREATE POLICY tenant_isolation ON sandbox_sessions
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON workload_identities;
+CREATE POLICY tenant_isolation ON workload_identities
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON workload_certificates;
+CREATE POLICY tenant_isolation ON workload_certificates
+  FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM workload_identities 
+    WHERE workload_identities.id = workload_id 
+    AND workload_identities.tenant_id = current_setting('app.current_tenant', true)::uuid
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM workload_identities 
+    WHERE workload_identities.id = workload_id 
+    AND workload_identities.tenant_id = current_setting('app.current_tenant', true)::uuid
+  ));
+
+DROP POLICY IF EXISTS tenant_isolation ON autonomous_revocations;
+CREATE POLICY tenant_isolation ON autonomous_revocations
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON digital_twin_nodes;
+CREATE POLICY tenant_isolation ON digital_twin_nodes
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON digital_twin_edges;
+CREATE POLICY tenant_isolation ON digital_twin_edges
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON blast_radius_simulations;
+CREATE POLICY tenant_isolation ON blast_radius_simulations
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_isolation ON federated_intelligence_models;
+CREATE POLICY tenant_isolation ON federated_intelligence_models
+  FOR ALL
+  USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
+
+DROP POLICY IF EXISTS tenant_read ON global_intelligence_rules;
+CREATE POLICY tenant_read ON global_intelligence_rules
+  FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS tenant_isolation ON risk_cards;
+CREATE POLICY tenant_isolation ON risk_cards
   FOR ALL
   USING (tenant_id = current_setting('app.current_tenant', true)::uuid)
   WITH CHECK (tenant_id = current_setting('app.current_tenant', true)::uuid);
@@ -183,6 +261,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON certificates  TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON scan_findings TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON rotation_logs   TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON sandbox_sessions TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON workload_identities TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON workload_certificates TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON autonomous_revocations TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON digital_twin_nodes TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON digital_twin_edges TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON blast_radius_simulations TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON federated_intelligence_models TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON global_intelligence_rules TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON risk_cards TO app_user;
 
 -- audit_log: no UPDATE/DELETE grant at all — the trigger is a second,
 -- independent layer on top of this, not a substitute for it.

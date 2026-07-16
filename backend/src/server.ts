@@ -7,6 +7,7 @@ import auditRoutes from './modules/audit/routes';
 import scannerRoutes from './modules/scanner/routes';
 import rotationRoutes from './modules/rotation/routes';
 import sandboxRoutes from './modules/sandbox/routes';
+import cyberRoutes from './modules/cyber/routes';
 import { startCertLifecycleJob } from './modules/certs/job';
 import { startSandboxLifecycleJob } from './modules/sandbox/job';
 
@@ -28,6 +29,7 @@ app.use('/internal/audit', auditRoutes);
 app.use('/internal/scanner', scannerRoutes);
 app.use('/internal/rotation', rotationRoutes);
 app.use('/internal/sandbox', sandboxRoutes);
+app.use('/internal/cyber', cyberRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
