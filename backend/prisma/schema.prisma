@@ -1,0 +1,98 @@
+// Runtime datasource — resolves to app_user (non-owner, RLS-subject) in normal
+// operation. `npm run migrate:dev` / `migrate:deploy` temporarily override
+// DATABASE_URL to the owner connection via scripts/with-owner-db.mjs, because
+// only the owning role can run DDL — see docker/init and prisma/hardening.sql
+// for why the runtime role must NOT be the table owner.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Stub for local dev only — in the real deployment this table is owned and
+// created by the auth/tenant service; we only ever reference tenant_id via FK.
+model Tenant {
+  id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+
+  secrets      Secret[]
+  certificates Certificate[]
+  auditLogs    AuditLog[]
+  scanFindings ScanFinding[]
+
+  @@map("tenants")
+}
+
+model Secret {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  name           String
+  encryptedValue Bytes    @map("encrypted_value")
+  iv             Bytes
+  authTag        Bytes    @map("auth_tag")
+  wrappedDek     Bytes    @map("wrapped_dek")
+  version        Int      @default(1)
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("secrets")
+}
+
+model Certificate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String?
+  commonName  String   @map("common_name")
+  issuedAt    DateTime @map("issued_at") @db.Timestamptz(6)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  status      String   @default("active")
+  autoRenew   Boolean  @default(true) @map("auto_renew")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("certificates")
+}
+
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  tenantId     String   @map("tenant_id") @db.Uuid
+  actorId      String   @map("actor_id") @db.Uuid
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id") @db.Uuid
+  details      Json     @default("{}")
+  prevHash     String   @map("prev_hash") @db.Char(64)
+  entryHash    String   @map("entry_hash") @db.Char(64)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, id])
+  @@map("audit_log")
+}
+
+model ScanFinding {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  source         String
+  secretType     String   @map("secret_type")
+  matchedSnippet String   @map("matched_snippet")
+  severity       String
+  llmVerdict     String   @map("llm_verdict")
+  remediation    String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("scan_findings")
+}

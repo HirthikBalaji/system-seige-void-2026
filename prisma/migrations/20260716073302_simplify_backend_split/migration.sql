@@ -21,31 +21,13 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
-CREATE TABLE "Secret" (
+CREATE TABLE "Session" (
     "id" TEXT NOT NULL PRIMARY KEY,
-    "tenantId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "value" TEXT NOT NULL,
-    "version" INTEGER NOT NULL DEFAULT 1,
-    "createdBy" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "Secret_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
-    CONSTRAINT "Secret_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "Certificate" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "tenantId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "domain" TEXT NOT NULL,
-    "certificateData" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "expiresAt" DATETIME NOT NULL,
-    "status" TEXT NOT NULL,
+    "revoked" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    CONSTRAINT "Certificate_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -63,8 +45,7 @@ CREATE TABLE "AuditLog" (
     "prevHash" TEXT NOT NULL,
     "rowHash" TEXT NOT NULL,
     "signature" TEXT NOT NULL,
-    CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT "AuditLog_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+    CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateIndex

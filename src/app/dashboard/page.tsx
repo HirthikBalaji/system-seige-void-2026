@@ -813,7 +813,7 @@ export default function Dashboard() {
               <div className="card" style={{ border: '1px solid #27272a', marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '0.5rem' }}>Scan Code for Secrets & Exposed Credentials</h3>
                 <p style={{ color: '#a1a1aa', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
-                  Analyze source files, environment configs, or scripts for hardcoded secrets, private keys, and API tokens. Scans are analyzed using the <span style={{ color: '#8b5cf6', fontWeight: 600 }}>NVIDIA NIM LLM Inference Gateway</span>.
+                  Analyze source files, environment configs, or scripts for hardcoded secrets, private keys, and API tokens. A deterministic regex/entropy pre-filter finds candidates, then <span style={{ color: '#8b5cf6', fontWeight: 600 }}>Anthropic Claude</span> classifies each one — only a masked snippet ever leaves this process.
                 </p>
 
                 <form onSubmit={handleAiScan}>
@@ -841,7 +841,7 @@ export default function Dashboard() {
                     />
                   </div>
                   <button type="submit" disabled={scanning} className="btn btn-primary">
-                    {scanning ? 'Analyzing Exposures...' : 'Run Security Audit via NVIDIA NIM'}
+                    {scanning ? 'Analyzing Exposures...' : 'Run Security Audit'}
                   </button>
                 </form>
               </div>
@@ -858,9 +858,9 @@ export default function Dashboard() {
                         </span>
                       </h3>
                       <p style={{ color: '#a1a1aa', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
-                        {scanResult.isMocked 
-                          ? `Executed via Local Regex Heuristics Engine (${scanResult.summary.includes('failed') ? 'NIM Models Offline Fallback' : 'No NVIDIA_API_KEY found'})` 
-                          : `Executed via NVIDIA NIM Chat Completion (${scanResult.modelUsed || 'meta/llama-3.3-70b-instruct'})`}
+                        {scanResult.isMocked
+                          ? 'Executed via local regex/entropy pre-filter only — live LLM classification was unavailable for this scan.'
+                          : `Classified by ${scanResult.modelUsed || 'Anthropic Claude'} after the deterministic pre-filter stage.`}
                       </p>
                     </div>
                   </div>
@@ -972,16 +972,18 @@ export default function Dashboard() {
               {/* Audit Table */}
               <div className="card" style={{ border: '1px solid #27272a' }}>
                 <h3 style={{ marginBottom: '1rem' }}>Ledger Stream</h3>
+                <p style={{ color: '#71717a', fontSize: '0.75rem', marginTop: '-0.5rem', marginBottom: '1rem' }}>
+                  Every row below is a link in the cryptographic hash chain — each entry&apos;s hash covers the previous
+                  entry&apos;s hash, so this is the actual chain &quot;Verify Chain Integrity&quot; checks.
+                </p>
                 <div className="table-container">
                   <table className="table">
                     <thead>
                       <tr>
                         <th>Timestamp</th>
-                        <th>User Email</th>
-                        <th>IP Address</th>
                         <th>Action</th>
-                        <th>Result</th>
-                        <th>Metadata Context</th>
+                        <th>Resource</th>
+                        <th>Details</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -990,16 +992,10 @@ export default function Dashboard() {
                           <td style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>
                             {new Date(log.timestamp).toLocaleString()}
                           </td>
-                          <td style={{ fontSize: '0.8125rem' }}>{log.email || 'System'}</td>
-                          <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{log.ipAddress}</td>
                           <td style={{ fontWeight: 600 }}>{log.action}</td>
-                          <td>
-                            <span className={`badge ${
-                              log.result === 'SUCCESS' ? 'badge-green' : 
-                              log.result === 'DENIED' ? 'badge-amber' : 'badge-red'
-                            }`}>
-                              {log.result}
-                            </span>
+                          <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                            {log.resourceType}
+                            {log.resourceId ? `:${log.resourceId.slice(0, 8)}…` : ''}
                           </td>
                           <td style={{ fontSize: '0.75rem', fontFamily: 'monospace', color: '#a1a1aa', maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {log.details}

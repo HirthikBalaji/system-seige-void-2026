@@ -9,15 +9,19 @@ datasource db {
   provider = "sqlite"
 }
 
+// This app is the auth/session/tenant gateway in front of the real
+// secrets/certs/audit-log/scanner backend (see /backend — a separate
+// Express + Postgres service). Secret/Certificate/AuditLog resource data
+// used to live here too; it's now owned entirely by that backend (real
+// envelope encryption, RLS-enforced tenant isolation, a hash-chained audit
+// trail) and proxied to via src/lib/backendClient.ts. Only auth-adjacent
+// state stays in this SQLite database.
 model Tenant {
-  id           String        @id @default(uuid())
-  name         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  users        User[]
-  secrets      Secret[]
-  certificates Certificate[]
-  auditLogs    AuditLog[]
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
 }
 
 model User {
@@ -31,7 +35,6 @@ model User {
   lastLogin DateTime  @default(now())
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  secrets   Secret[]
   auditLogs AuditLog[]
   sessions  Session[]
 }
@@ -45,32 +48,9 @@ model Session {
   createdAt DateTime @default(now())
 }
 
-model Secret {
-  id        String   @id @default(uuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  value     String   // AES-256 encrypted string
-  version   Int      @default(1)
-  createdBy String
-  creator   User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Certificate {
-  id              String   @id @default(uuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name            String
-  domain          String
-  certificateData String
-  expiresAt       DateTime
-  status          String   // ACTIVE, REVOKED, EXPIRED
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
+// Auth-event trail only (login, logout, permission-denied) — kept separate
+// from the backend's resource audit trail (secret.create, cert.renew, etc.),
+// which is hash-chained and tenant-scoped over there instead.
 model AuditLog {
   id        String   @id @default(uuid())
   timestamp DateTime @default(now())
@@ -78,7 +58,6 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   email     String?
   tenantId  String?
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   ipAddress String
   userAgent String
   action    String
