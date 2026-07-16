@@ -1,6 +1,6 @@
 import * as jose from 'jose';
 
-const TEAM_DOMAIN = process.env.CF_TEAM_DOMAIN || 'system-seige.cloudflareaccess.com';
+const TEAM_DOMAIN = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN || 'hirthikbalaji.cloudflareaccess.com';
 const AUDIENCE_TAG = process.env.CF_AUDIENCE_TAG || 'mock-audience-tag-for-cloudflare-access';
 const MOCK_SECRET_KEY = new TextEncoder().encode(process.env.ENCRYPTION_SECRET || '0123456789abcdef0123456789abcdef');
 

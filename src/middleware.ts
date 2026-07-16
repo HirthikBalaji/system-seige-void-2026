@@ -25,7 +25,7 @@ export function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL('/', req.nextUrl.origin));
     } else {
       // For production, redirect to the Cloudflare Access portal
-      const teamDomain = process.env.CF_TEAM_DOMAIN || 'system-seige.cloudflareaccess.com';
+      const teamDomain = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN || 'hirthikbalaji.cloudflareaccess.com';
       return NextResponse.redirect(`https://${teamDomain}/cdn-cgi/access/login`);
     }
   }
