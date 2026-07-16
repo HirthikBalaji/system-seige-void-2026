@@ -29,7 +29,28 @@ import {
 } from 'lucide-react';
 import { encryptWithPublicKeyPem } from '@/lib/browserCrypto';
 
-type Tab = 'secrets' | 'certs' | 'scanner' | 'audit' | 'users' | 'rotation' | 'sandbox';
+// Import Cyber Suite subcomponents
+import TimelockSecretsTab from '@/components/TimelockSecretsTab';
+import WorkloadIdentityTab from '@/components/WorkloadIdentityTab';
+import AutonomousRevocationsTab from '@/components/AutonomousRevocationsTab';
+import DigitalTwinTab from '@/components/DigitalTwinTab';
+import FederatedIntelligenceTab from '@/components/FederatedIntelligenceTab';
+import RiskCardsTab from '@/components/RiskCardsTab';
+
+type Tab =
+  | 'secrets'
+  | 'certs'
+  | 'scanner'
+  | 'audit'
+  | 'users'
+  | 'rotation'
+  | 'sandbox'
+  | 'timelock'
+  | 'workload'
+  | 'revocation'
+  | 'digitaltwin'
+  | 'federated'
+  | 'riskcards';
 
 interface UserContext {
   id: string;
@@ -248,6 +269,15 @@ export default function Dashboard() {
   const [maskedFieldResult, setMaskedFieldResult] = useState<string | null>(null);
   const [maskingField, setMaskingField] = useState<boolean>(false);
 
+  // Advanced Cyber Capabilities States
+  const [timelockSecrets, setTimelockSecrets] = useState<any[]>([]);
+  const [workloadIdentities, setWorkloadIdentities] = useState<any[]>([]);
+  const [revocations, setRevocations] = useState<any[]>([]);
+  const [digitalTwinGraph, setDigitalTwinGraph] = useState<any>(null);
+  const [digitalTwinSimulations, setDigitalTwinSimulations] = useState<any[]>([]);
+  const [federatedRules, setFederatedRules] = useState<any[]>([]);
+  const [riskCards, setRiskCards] = useState<any[]>([]);
+
   // Action / UI states
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
   const [chainValidationResult, setChainValidationResult] = useState<ChainResult | null>(null);
@@ -274,7 +304,15 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (userContext) fetchTabData();
+    if (userContext) {
+      fetchTabData();
+      const interval = setInterval(() => {
+        if (['timelock', 'workload', 'revocation', 'digitaltwin', 'federated', 'riskcards', 'rotation', 'sandbox'].includes(activeTab)) {
+          fetchTabData();
+        }
+      }, 4000);
+      return () => clearInterval(interval);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, userContext]);
 
@@ -364,6 +402,47 @@ export default function Dashboard() {
         }
         const data = await res.json();
         setSandboxSessions(Array.isArray(data.sessions) ? data.sessions : []);
+      } else if (activeTab === 'timelock') {
+        const res = await fetch('/api/cyber?action=timelock-secrets');
+        if (res.ok) {
+          const data = await res.json();
+          setTimelockSecrets(data.secrets || []);
+        }
+      } else if (activeTab === 'workload') {
+        const res = await fetch('/api/cyber?action=workload-identities');
+        if (res.ok) {
+          const data = await res.json();
+          setWorkloadIdentities(data.identities || []);
+        }
+      } else if (activeTab === 'revocation') {
+        const res = await fetch('/api/cyber?action=revocations');
+        if (res.ok) {
+          const data = await res.json();
+          setRevocations(data.revocations || []);
+        }
+      } else if (activeTab === 'digitaltwin') {
+        const resG = await fetch('/api/cyber?action=digitaltwin-graph');
+        if (resG.ok) {
+          const dataG = await resG.json();
+          setDigitalTwinGraph(dataG);
+        }
+        const resS = await fetch('/api/cyber?action=digitaltwin-simulations');
+        if (resS.ok) {
+          const dataS = await resS.json();
+          setDigitalTwinSimulations(dataS.simulations || []);
+        }
+      } else if (activeTab === 'federated') {
+        const res = await fetch('/api/cyber?action=federated-rules');
+        if (res.ok) {
+          const data = await res.json();
+          setFederatedRules(data.rules || []);
+        }
+      } else if (activeTab === 'riskcards') {
+        const res = await fetch('/api/cyber?action=riskcards');
+        if (res.ok) {
+          const data = await res.json();
+          setRiskCards(data.riskCards || []);
+        }
       }
     } catch (err: unknown) {
       console.error('Failed to fetch tab data:', err);
@@ -828,6 +907,14 @@ export default function Dashboard() {
     { id: 'scanner', label: 'AI Secret Scanner', icon: ScanLine },
     { id: 'audit', label: 'Audit Trail', icon: Link2 },
     { id: 'users', label: 'User Roles (RBAC)', icon: Users },
+    { id: 'rotation', label: 'AI Risk & Rotation', icon: RotateCw },
+    { id: 'sandbox', label: 'Secret Sandbox', icon: KeySquare },
+    { id: 'timelock', label: 'Time-Lock Secrets', icon: Clock },
+    { id: 'workload', label: 'Workload Identity', icon: Globe2 },
+    { id: 'revocation', label: 'Auto Revocation', icon: ShieldAlert },
+    { id: 'digitaltwin', label: 'Blast Radius Simulator', icon: Radar },
+    { id: 'federated', label: 'Federated Intel', icon: Building2 },
+    { id: 'riskcards', label: 'AI Risk Cards', icon: FileCheck2 },
   ];
 
   const TAB_TITLES: Record<Tab, string> = {
@@ -836,6 +923,14 @@ export default function Dashboard() {
     scanner: 'AI Exposure Scan Engine',
     audit: 'Cryptographic Immutable Audit Trail',
     users: 'Team Identities & Access Controls',
+    rotation: 'AI Risk-Based Secret Rotation',
+    sandbox: 'Enterprise Secret Sandbox',
+    timelock: 'Cryptographic Time-Lock Secrets',
+    workload: 'Workload Identity & Attestation',
+    revocation: 'Autonomous Leak Remediation Agents',
+    digitaltwin: 'Blast Radius lateral Movement Simulator',
+    federated: 'Federated Privacy-Preserving Intelligence',
+    riskcards: 'Explainable AI Risk Cards',
   };
 
   return (
@@ -850,73 +945,12 @@ export default function Dashboard() {
           </span>
         </div>
 
-        <ul className="sidebar-menu">
+        <ul className="sidebar-menu" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 160px)' }}>
           {NAV.map(({ id, label, icon: Icon }) => (
             <li key={id}>
               <div className={`sidebar-link ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
                 <Icon size={18} strokeWidth={1.75} />
                 {label}
-          <li>
-            <div className={`sidebar-link ${activeTab === 'secrets' ? 'active' : ''}`} onClick={() => setActiveTab('secrets')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"></path>
-              </svg>
-              Secrets Manager
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'certs' ? 'active' : ''}`} onClick={() => setActiveTab('certs')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-.778.099-1.533.284-2.253"></path>
-              </svg>
-              TLS Certificates
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'scanner' ? 'active' : ''}`} onClick={() => setActiveTab('scanner')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21m0 0l-.813-5.096L3 15.187m6 5.813l.813-5.096L15 15.188m-5.187-6.375L9 3m0 0l-.813 5.813L3 9.812m6-6.813l.813 5.813L15 9.813M21 21l-6-6m6 0l-6 6m6-6H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              AI Secret Scanner
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path>
-              </svg>
-              Audit Trail
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"></path>
-              </svg>
-              User Roles (RBAC)
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'rotation' ? 'active' : ''}`} onClick={() => setActiveTab('rotation')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"></path>
-              </svg>
-              AI Risk & Rotation
-            </div>
-          </li>
-          <li>
-            <div className={`sidebar-link ${activeTab === 'sandbox' ? 'active' : ''}`} onClick={() => setActiveTab('sandbox')}>
-              <svg style={{ width: '18px', height: '18px' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              Secret Sandbox
-            </div>
-          </li>
-
-          {/* Sandbox persona switcher */}
-          {isSandbox && (
-            <div className="dev-sandbox-widget">
-              <div className="dev-sandbox-title">
                 <span>Sandbox Controls</span>
                 <span className="badge badge-purple" style={{ fontSize: '0.6rem' }}>Mock Auth</span>
               </div>
@@ -2040,6 +2074,54 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* TAB: TIME-LOCKED SECRETS */}
+          {activeTab === 'timelock' && (
+            <TimelockSecretsTab
+              secrets={timelockSecrets}
+              onRefresh={fetchTabData}
+            />
+          )}
+
+          {/* TAB: WORKLOAD IDENTITY */}
+          {activeTab === 'workload' && (
+            <WorkloadIdentityTab
+              identities={workloadIdentities}
+              onRefresh={fetchTabData}
+            />
+          )}
+
+          {/* TAB: AUTONOMOUS REVOCATIONS */}
+          {activeTab === 'revocation' && (
+            <AutonomousRevocationsTab
+              revocations={revocations}
+              onRefresh={fetchTabData}
+            />
+          )}
+
+          {/* TAB: DIGITAL TWIN & BLAST RADIUS */}
+          {activeTab === 'digitaltwin' && (
+            <DigitalTwinTab
+              graph={digitalTwinGraph}
+              simulations={digitalTwinSimulations}
+              onRefresh={fetchTabData}
+            />
+          )}
+
+          {/* TAB: FEDERATED INTELLIGENCE */}
+          {activeTab === 'federated' && (
+            <FederatedIntelligenceTab
+              rules={federatedRules}
+              onRefresh={fetchTabData}
+            />
+          )}
+
+          {/* TAB: EXPLAINABLE AI RISK CARDS */}
+          {activeTab === 'riskcards' && (
+            <RiskCardsTab
+              riskCards={riskCards}
+            />
           )}
 
         </div>

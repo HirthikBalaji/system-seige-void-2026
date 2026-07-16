@@ -45,3 +45,8 @@ next-env.d.ts
 # SQLite database
 *.db
 *.db-journal
+
+# Local postgres binaries and data
+backend/pg_data/
+backend/pgsql/
+backend/prisma/migrations/migration_lock.toml

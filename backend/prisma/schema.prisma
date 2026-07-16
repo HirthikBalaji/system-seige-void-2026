@@ -18,35 +18,46 @@ model Tenant {
   id   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name String
 
-  secrets      Secret[]
-  certificates Certificate[]
-  auditLogs    AuditLog[]
-  scanFindings ScanFinding[]
-  rotationLogs RotationLog[]
-  sandboxSessions SandboxSession[]
+  secrets               Secret[]
+  certificates          Certificate[]
+  auditLogs             AuditLog[]
+  scanFindings          ScanFinding[]
+  rotationLogs          RotationLog[]
+  sandboxSessions       SandboxSession[]
+  workloadIdentities    WorkloadIdentity[]
+  autonomousRevocations AutonomousRevocation[]
+  digitalTwinNodes      DigitalTwinNode[]
+  digitalTwinEdges      DigitalTwinEdge[]
+  blastRadiusSimulations BlastRadiusSimulation[]
+  federatedModels       FederatedIntelligenceModel[]
+  riskCards             RiskCard[]
 
   @@map("tenants")
 }
 
 model Secret {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId       String   @map("tenant_id") @db.Uuid
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
   name           String
-  encryptedValue Bytes    @map("encrypted_value")
+  encryptedValue Bytes     @map("encrypted_value")
   iv             Bytes
-  authTag        Bytes    @map("auth_tag")
-  wrappedDek     Bytes    @map("wrapped_dek")
-  version        Int      @default(1)
-  createdBy      String   @map("created_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  authTag        Bytes     @map("auth_tag")
+  wrappedDek     Bytes     @map("wrapped_dek")
+  version        Int       @default(1)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   
   // AI Risk and Rotation Fields
-  riskScore      Float    @default(0) @map("risk_score")
-  riskLevel      String   @default("LOW") @map("risk_level")
+  riskScore      Float     @default(0) @map("risk_score")
+  riskLevel      String    @default("LOW") @map("risk_level")
   lastRotationTime DateTime @default(now()) @map("last_rotation_time") @db.Timestamptz(6)
   rotationFrequencyDays Int @default(90) @map("rotation_frequency_days")
-  isRotatable    Boolean  @default(true) @map("is_rotatable")
+  isRotatable    Boolean   @default(true) @map("is_rotatable")
+
+  // Cryptographic Time-Lock fields
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
+  timeLockMetadata Json?   @map("time_lock_metadata")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -145,4 +156,157 @@ model SandboxSession {
   @@index([tenantId])
   @@map("sandbox_sessions")
 }
+
+model WorkloadIdentity {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  name            String
+  type            String   // KUBERNETES, DOCKER, MICROSERVICE
+  attestationType String   // K8S_SA, TPM, SPIFFE
+  status          String   // ACTIVE, REVOKED
+  selector        Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  certificates    WorkloadCertificate[]
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("workload_identities")
+}
+
+model WorkloadCertificate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workloadId      String    @map("workload_id") @db.Uuid
+  serialNumber    String    @map("serial_number")
+  commonName      String    @map("common_name")
+  sans            Json      @default("[]")
+  certificatePem  String    @map("certificate_pem")
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  status          String    // ACTIVE, REVOKED
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revocationReason String?  @map("revocation_reason")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workload        WorkloadIdentity @relation(fields: [workloadId], references: [id])
+
+  @@index([workloadId])
+  @@map("workload_certificates")
+}
+
+model AutonomousRevocation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  findingId          String?   @map("finding_id") @db.Uuid
+  provider           String    // AWS, GITHUB, STRIPE, TWILIO, GCP, AZURE
+  credentialIdentifier String  @map("credential_identifier")
+  status             String    // PENDING, VALIDATED, REVOKING, COMPLETED, FAILED
+  executedActions    Json      @default("[]")
+  rollbackPlan       String?   @map("rollback_plan")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("autonomous_revocations")
+}
+
+model DigitalTwinNode {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String
+  type        String   // USER, SECRET, CERTIFICATE, APPLICATION, API, DATABASE, K8S_CLUSTER, CLOUD_RESOURCE, CICD_PIPELINE
+  properties  Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("digital_twin_nodes")
+}
+
+model DigitalTwinEdge {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  sourceNodeId String   @map("source_node_id") @db.Uuid
+  targetNodeId String   @map("target_node_id") @db.Uuid
+  type         String   // ACCESSES, CONTAINS, MANAGES, DEPENDS_ON
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("digital_twin_edges")
+}
+
+model BlastRadiusSimulation {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  secretId        String?  @map("secret_id") @db.Uuid
+  startNodeId     String   @map("start_node_id") @db.Uuid
+  riskScore       Float    @map("risk_score")
+  compromisedNodes Json     @default("[]")
+  lateralPaths    Json     @default("[]")
+  businessImpact  String   @map("business_impact")
+  recommendations Json     @default("[]")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("blast_radius_simulations")
+}
+
+model FederatedIntelligenceModel {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  patternType      String   @map("pattern_type") // SECRET_LEAK_LOCATION, FILE_TYPE, COMMIT_BEHAVIOR
+  extractedPattern Json     @map("extracted_pattern")
+  isShared         Boolean  @default(false) @map("is_shared")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("federated_intelligence_models")
+}
+
+model GlobalIntelligenceRule {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ruleName    String   @map("rule_name")
+  pattern     String
+  severity    String
+  sourceCount Int      @map("source_count")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("global_intelligence_rules")
+}
+
+model RiskCard {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  targetType         String   @map("target_type") // SECRET, CERTIFICATE, WORKLOAD
+  targetId           String   @map("target_id")
+  riskScore          Float    @map("risk_score")
+  confidenceScore    Float    @map("confidence_score")
+  triggerEvent       String   @map("trigger_event")
+  evidence           Json     @default("{}")
+  timeline           Json     @default("[]")
+  assetsAffected     Json     @default("[]")
+  businessImpact     String   @map("business_impact")
+  complianceImpact   String   @map("compliance_impact")
+  recommendedAction  String   @map("recommended_action")
+  executedAction     String   @map("executed_action")
+  validationPerformed String   @map("validation_performed")
+  rollbackPlan       String   @map("rollback_plan")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant             Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("risk_cards")
+}
+
 
