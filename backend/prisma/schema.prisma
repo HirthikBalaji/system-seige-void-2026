@@ -22,6 +22,8 @@ model Tenant {
   certificates Certificate[]
   auditLogs    AuditLog[]
   scanFindings ScanFinding[]
+  rotationLogs RotationLog[]
+  sandboxSessions SandboxSession[]
 
   @@map("tenants")
 }
@@ -38,6 +40,13 @@ model Secret {
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
+  // AI Risk and Rotation Fields
+  riskScore      Float    @default(0) @map("risk_score")
+  riskLevel      String   @default("LOW") @map("risk_level")
+  lastRotationTime DateTime @default(now()) @map("last_rotation_time") @db.Timestamptz(6)
+  rotationFrequencyDays Int @default(90) @map("rotation_frequency_days")
+  isRotatable    Boolean  @default(true) @map("is_rotatable")
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -96,3 +105,44 @@ model ScanFinding {
   @@index([tenantId])
   @@map("scan_findings")
 }
+
+model RotationLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  secretId       String   @map("secret_id") @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  triggerType    String   @map("trigger_type") // AUTO or MANUAL
+  oldVersion     Int      @map("old_version")
+  newVersion     Int      @map("new_version")
+  status         String   // PENDING, COMPLETED, FAILED
+  riskScoreBefore Float    @map("risk_score_before")
+  rotationReason String   @map("rotation_reason")
+  riskFactors    Json     @map("risk_factors") @default("{}")
+  aiConfidence   Float    @map("ai_confidence") @default(1.0)
+  timeline       Json     @default("[]")
+  errorLog       String?  @map("error_log")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("rotation_logs")
+}
+
+model SandboxSession {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String    @map("tenant_id") @db.Uuid
+  name                   String
+  createdBy              String    @map("created_by") @db.Uuid
+  status                 String    // ACTIVE, EXPIRED, DESTROYED
+  resources              Json      @default("[]")
+  expiresAt              DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  destroyedAt            DateTime? @map("destroyed_at") @db.Timestamptz(6)
+  destructionCertificate String?   @map("destruction_certificate")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("sandbox_sessions")
+}
+

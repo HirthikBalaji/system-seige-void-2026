@@ -48,5 +48,7 @@ export const config = {
     '/api/audit-logs/:path*',
     '/api/users/:path*',
     '/api/scan/:path*',
+    '/api/rotation/:path*',
+    '/api/sandbox/:path*',
   ],
 };

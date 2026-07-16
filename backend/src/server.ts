@@ -5,7 +5,10 @@ import vaultRoutes from './modules/vault/routes';
 import certRoutes from './modules/certs/routes';
 import auditRoutes from './modules/audit/routes';
 import scannerRoutes from './modules/scanner/routes';
+import rotationRoutes from './modules/rotation/routes';
+import sandboxRoutes from './modules/sandbox/routes';
 import { startCertLifecycleJob } from './modules/certs/job';
+import { startSandboxLifecycleJob } from './modules/sandbox/job';
 
 const app = express();
 app.disable('x-powered-by');
@@ -23,11 +26,14 @@ app.use('/internal/vault', vaultRoutes);
 app.use('/internal/certs', certRoutes);
 app.use('/internal/audit', auditRoutes);
 app.use('/internal/scanner', scannerRoutes);
+app.use('/internal/rotation', rotationRoutes);
+app.use('/internal/sandbox', sandboxRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
 
 const stopCertJob = startCertLifecycleJob();
+const stopSandboxJob = startSandboxLifecycleJob();
 
 const server = app.listen(env.PORT, () => {
   console.log(`secrets-platform backend listening on :${env.PORT}`);
@@ -35,6 +41,7 @@ const server = app.listen(env.PORT, () => {
 
 function shutdown(): void {
   stopCertJob();
+  stopSandboxJob();
   server.close(() => process.exit(0));
 }
 
