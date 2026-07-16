@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import InteractiveBackground from '@/components/InteractiveBackground';
 
 export const metadata: Metadata = {
   title: 'SovereignGuard - Enterprise Secrets & Certificate Lifecycle Manager',
@@ -18,6 +19,7 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body>
+        <InteractiveBackground />
         {children}
       </body>
     </html>

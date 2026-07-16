@@ -58,12 +58,12 @@ function parseClassification(text: string): LlmClassification {
   return { verdict, severity, remediation, usedLlm: true };
 }
 
-async function callLlm(userPrompt: string): Promise<LlmClassification> {
+async function callLlm(userPrompt: string, apiKey: string): Promise<LlmClassification> {
   const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': env.LLM_API_KEY,
+      'x-api-key': apiKey,
       'anthropic-version': ANTHROPIC_VERSION,
     },
     body: JSON.stringify({
@@ -88,12 +88,18 @@ async function callLlm(userPrompt: string): Promise<LlmClassification> {
  * failing (network blip, rate limit, malformed response) falls back to a
  * conservative "review manually" verdict instead of failing the whole scan
  * request for every other candidate in it.
+ *
+ * `apiKey` lets a caller bring their own Anthropic key for this one request
+ * (e.g. another team testing the scanner without spending our quota) —
+ * falls back to the server's own configured key when omitted. Never logged,
+ * never persisted; it only ever lives for the duration of this call.
  */
 export async function classifyCandidate(params: {
   secretType: string;
   maskedSnippet: string;
   context: string;
   filename: string;
+  apiKey?: string;
 }): Promise<LlmClassification> {
   const userPrompt = [
     `secret_type: ${params.secretType}`,
@@ -104,7 +110,7 @@ export async function classifyCandidate(params: {
   ].join('\n');
 
   try {
-    return await callLlm(userPrompt);
+    return await callLlm(userPrompt, params.apiKey || env.LLM_API_KEY);
   } catch (err) {
     console.error('[scanner] LLM classification failed:', err instanceof Error ? err.message : 'unknown error');
     return FALLBACK_CLASSIFICATION;

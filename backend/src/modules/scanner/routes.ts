@@ -22,6 +22,12 @@ const scanSchema = z
     source: z.string().trim().min(1).max(255),
     content: z.string().max(2_000_000).optional(),
     repoUrl: z.string().url().optional(),
+    // Bring-your-own-key — lets a caller test Stage 2 against their own
+    // Anthropic account instead of the server's shared key. Arrives here
+    // already decrypted by the gateway (see src/lib/scanKeyExchange.ts in
+    // the Next.js app) over the trusted internal hop; never logged, never
+    // written to any table.
+    apiKey: z.string().trim().min(10).max(200).optional(),
   })
   .refine((body) => Boolean(body.content) !== Boolean(body.repoUrl), {
     message: 'exactly one of content or repoUrl is required',
@@ -41,7 +47,7 @@ router.post(
   validateBody(scanSchema),
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
-    const { source, content, repoUrl } = req.body as z.infer<typeof scanSchema>;
+    const { source, content, repoUrl, apiKey } = req.body as z.infer<typeof scanSchema>;
 
     let text: string;
     if (repoUrl) {
@@ -78,6 +84,7 @@ router.post(
           maskedSnippet,
           context,
           filename: source,
+          apiKey,
         });
 
         return {
@@ -127,6 +134,7 @@ router.post(
       findings,
       modelUsed: allUsedLlm ? LLM_MODEL : 'local-heuristics-fallback',
       isMocked: !allUsedLlm,
+      usedOwnKey: Boolean(apiKey),
     });
   }),
 );
