@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
-import { verifySession, hasPermission } from './auth';
+import { verifySession, hasPermission, getOrCreateUserAndTenant, createSession } from './auth';
+import { verifyCloudflareJWT } from './cloudflare';
 import { logEvent } from './audit';
 
 export class ApiError extends Error {
@@ -11,10 +12,45 @@ export class ApiError extends Error {
 
 export async function verifyApiRequest(req: Request, requiredPermission?: string) {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get('session-token')?.value;
+  let sessionToken = cookieStore.get('session-token')?.value;
 
   const ipAddress = req.headers.get('x-forwarded-for') || '127.0.0.1';
   const userAgent = req.headers.get('user-agent') || 'unknown';
+
+  let user;
+
+  // Auto-login: If local session is missing, check if a valid Cloudflare token is present
+  if (!sessionToken) {
+    const cfJwt = req.headers.get('CF-Access-Jwt-Assertion') || cookieStore.get('CF_Authorization')?.value;
+    
+    if (cfJwt) {
+      try {
+        const identity = await verifyCloudflareJWT(cfJwt);
+        user = await getOrCreateUserAndTenant(identity);
+        sessionToken = await createSession(user.id);
+
+        cookieStore.set('session-token', sessionToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          path: '/',
+          maxAge: 2 * 60 * 60, // 2 hours
+        });
+
+        await logEvent({
+          userId: user.id,
+          email: user.email,
+          tenantId: user.tenantId,
+          ipAddress,
+          userAgent,
+          action: 'Session Auto-Created from Cloudflare JWT',
+          result: 'SUCCESS',
+        });
+      } catch (err: any) {
+        console.error('Auto session provisioning failed:', err.message);
+      }
+    }
+  }
 
   if (!sessionToken) {
     await logEvent({
@@ -28,7 +64,9 @@ export async function verifyApiRequest(req: Request, requiredPermission?: string
   }
 
   try {
-    const user = await verifySession(sessionToken);
+    if (!user) {
+      user = await verifySession(sessionToken);
+    }
     
     if (requiredPermission && !hasPermission(user.role, requiredPermission)) {
       await logEvent({
@@ -59,9 +97,18 @@ export async function verifyApiRequest(req: Request, requiredPermission?: string
   }
 }
 
+import { BackendError } from './backendClient';
+
 export function handleApiError(err: any) {
   console.error('API Error:', err);
-  const statusCode = err instanceof ApiError ? err.statusCode : 500;
+  
+  let statusCode = 500;
+  if (err instanceof ApiError) {
+    statusCode = err.statusCode;
+  } else if (err instanceof BackendError) {
+    statusCode = err.status;
+  }
+  
   const message = err.message || 'Internal Server Error';
   
   return new Response(JSON.stringify({ error: message }), {

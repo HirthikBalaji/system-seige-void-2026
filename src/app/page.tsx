@@ -140,7 +140,7 @@ export default function LandingPage() {
   };
 
   const handleCloudflareRedirect = () => {
-    const teamDomain = process.env.CF_TEAM_DOMAIN || 'system-seige.cloudflareaccess.com';
+    const teamDomain = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN || 'hirthikbalaji.cloudflareaccess.com';
     window.location.href = `https://${teamDomain}/cdn-cgi/access/login`;
   };
 

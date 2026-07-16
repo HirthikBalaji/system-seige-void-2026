@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  allowedDevOrigins: ['void.hirthikbalaji.dpdns.org'],
 };
 
 export default nextConfig;

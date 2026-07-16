@@ -59,8 +59,10 @@ export async function GET(req: NextRequest) {
       details: { idp: identity.identityProvider, groups: identity.groups }
     });
 
-    // Redirect to dashboard
-    return NextResponse.redirect(new URL('/dashboard', req.nextUrl.origin));
+    // Redirect to dynamic destination
+    const { searchParams } = new URL(req.url);
+    const redirectPath = searchParams.get('redirect') || '/dashboard';
+    return NextResponse.redirect(new URL(redirectPath, req.nextUrl.origin));
   } catch (error: any) {
     await logEvent({
       ipAddress,
