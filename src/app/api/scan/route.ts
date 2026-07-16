@@ -4,7 +4,6 @@ import { logEvent } from '@/lib/audit';
 
 const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 const NIM_BASE_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
-const MODEL_NAME = 'meta/llama-3.3-70b-instruct';
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,25 +17,82 @@ export async function POST(req: NextRequest) {
 
     let scanResult;
     let isMockedResponse = false;
+    let usedModel = 'none';
 
     if (!NVIDIA_API_KEY) {
-      // Graceful local fallback to simulate the AI scanning structure if no API key is provided
       isMockedResponse = true;
       scanResult = runMockScanner(text, filename);
     } else {
       try {
-        const response = await fetch(NIM_BASE_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${NVIDIA_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: MODEL_NAME,
-            messages: [
-              {
-                role: 'system',
-                content: `You are an enterprise-grade AI security scanner. Analyze the provided text/code for sensitive data exposure (such as passwords, API keys, private keys, JWTs, cloud credentials, database connection strings, certificates).
+        // Step 1: Attempt scan with primary 70B model (8-second timeout limit)
+        usedModel = 'meta/llama-3.3-70b-instruct';
+        scanResult = await fetchNIM(usedModel, text, filename);
+      } catch (err: any) {
+        console.warn(`Primary model ${usedModel} failed (${err.message}). Attempting Llama 3.1 8B fallback...`);
+        
+        try {
+          // Step 2: Fallback to highly responsive 8B model (8-second timeout limit)
+          usedModel = 'meta/llama-3.1-8b-instruct';
+          scanResult = await fetchNIM(usedModel, text, filename);
+        } catch (fallbackErr: any) {
+          console.error('All NVIDIA NIM models failed or timed out:', fallbackErr.message);
+          
+          // Step 3: Fallback to local heuristic regex scanning
+          isMockedResponse = true;
+          usedModel = 'local-heuristics';
+          scanResult = {
+            ...runMockScanner(text, filename),
+            summary: `Note: Live AI Scan failed (${fallbackErr.message}). Switched to local heuristics engine.`
+          };
+        }
+      }
+    }
+
+    await logEvent({
+      userId: user.id,
+      email: user.email,
+      tenantId,
+      ipAddress,
+      userAgent,
+      action: 'AI Exposure Scan',
+      result: 'SUCCESS',
+      details: {
+        filename,
+        safe: scanResult.safe,
+        findingsCount: scanResult.findings.length,
+        isMocked: isMockedResponse,
+        modelUsed: usedModel
+      }
+    });
+
+    return NextResponse.json({
+      ...scanResult,
+      isMocked: isMockedResponse,
+      modelUsed: usedModel
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+// NIM API Request wrapper with AbortController timeout
+async function fetchNIM(modelName: string, text: string, filename?: string) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds timeout
+
+  try {
+    const response = await fetch(NIM_BASE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${NVIDIA_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          {
+            role: 'system',
+            content: `You are an enterprise-grade AI security scanner. Analyze the provided text/code for sensitive data exposure (such as passwords, API keys, private keys, JWTs, cloud credentials, database connection strings, certificates).
 Return your analysis ONLY in valid JSON format. Do not write markdown wrappers like \`\`\`json or explanations.
 
 Follow this structure exactly:
@@ -53,67 +109,41 @@ Follow this structure exactly:
   ],
   "summary": "string summarising the scan results"
 }`
-              },
-              {
-                role: 'user',
-                content: `Scan the following file content${filename ? ` (filename: ${filename})` : ''}:\n\n${text}`
-              }
-            ],
-            temperature: 0.1,
-            max_tokens: 2048
-          })
-        });
+          },
+          {
+            role: 'user',
+            content: `Scan the following file content${filename ? ` (filename: ${filename})` : ''}:\n\n${text}`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 2048
+      }),
+      signal: controller.signal
+    });
 
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`NVIDIA NIM API responded with status ${response.status}: ${errText}`);
-        }
+    clearTimeout(timeoutId);
 
-        const data = await response.json();
-        const contentText = data.choices[0]?.message?.content || '';
-        
-        // Parse LLM response
-        try {
-          // Clean possible markdown wrapper syntax if LLM returns it
-          const cleanedText = contentText.replace(/```json/g, '').replace(/```/g, '').trim();
-          scanResult = JSON.parse(cleanedText);
-        } catch (parseErr) {
-          console.error('Failed to parse NIM JSON response:', contentText);
-          throw new Error('Invalid JSON format returned from AI model');
-        }
-      } catch (err: any) {
-        console.error('NVIDIA NIM API call failed:', err);
-        // Fallback to local scanner if API fails to prevent blocking the UI
-        isMockedResponse = true;
-        scanResult = {
-          ...runMockScanner(text, filename),
-          summary: `Note: Live AI Scan failed (${err.message}). Using local heuristics fallback.`
-        };
-      }
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Status ${response.status}: ${errText}`);
     }
 
-    await logEvent({
-      userId: user.id,
-      email: user.email,
-      tenantId,
-      ipAddress,
-      userAgent,
-      action: 'AI Exposure Scan',
-      result: 'SUCCESS',
-      details: {
-        filename,
-        safe: scanResult.safe,
-        findingsCount: scanResult.findings.length,
-        isMocked: isMockedResponse
-      }
-    });
-
-    return NextResponse.json({
-      ...scanResult,
-      isMocked: isMockedResponse
-    });
-  } catch (error) {
-    return handleApiError(error);
+    const data = await response.json();
+    const contentText = data.choices[0]?.message?.content || '';
+    
+    try {
+      const cleanedText = contentText.replace(/```json/g, '').replace(/```/g, '').trim();
+      return JSON.parse(cleanedText);
+    } catch (parseErr) {
+      console.error('Failed to parse NIM JSON response:', contentText);
+      throw new Error('Invalid JSON format returned from AI model');
+    }
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out after 8 seconds');
+    }
+    throw err;
   }
 }
 
@@ -122,7 +152,6 @@ function runMockScanner(text: string, filename?: string) {
   const findings = [];
   const lines = text.split('\n');
 
-  // Simple patterns to identify potential secrets
   const patterns = [
     { type: 'AWS API Key', regex: /(A3T[A-Z0-9]|AKIA|AGPA|AIDA)[A-Z0-9]{16}/, risk: 'HIGH', rec: 'Revoke key in AWS IAM console and rotate credentials.' },
     { type: 'Private Key', regex: /-----BEGIN (RSA |EC |PGP )?PRIVATE KEY-----/, risk: 'HIGH', rec: 'Revoke and rotate certificate. Do not commit private keys to source control.' },
@@ -135,7 +164,6 @@ function runMockScanner(text: string, filename?: string) {
     for (const pattern of patterns) {
       const match = lineContent.match(pattern.regex);
       if (match) {
-        // Mask the actual secret value
         const matchedStr = match[0];
         let masked = matchedStr;
         if (matchedStr.length > 8) {

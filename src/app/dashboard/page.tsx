@@ -858,7 +858,9 @@ export default function Dashboard() {
                         </span>
                       </h3>
                       <p style={{ color: '#a1a1aa', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
-                        {scanResult.isMocked ? 'Executed via Local Regex Heuristics Engine (No NVIDIA_API_KEY found)' : 'Executed via NVIDIA NIM Chat Completion (meta/llama-3.3-70b-instruct)'}
+                        {scanResult.isMocked 
+                          ? `Executed via Local Regex Heuristics Engine (${scanResult.summary.includes('failed') ? 'NIM Models Offline Fallback' : 'No NVIDIA_API_KEY found'})` 
+                          : `Executed via NVIDIA NIM Chat Completion (${scanResult.modelUsed || 'meta/llama-3.3-70b-instruct'})`}
                       </p>
                     </div>
                   </div>
