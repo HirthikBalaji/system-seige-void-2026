@@ -168,8 +168,18 @@ export default function Dashboard() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    router.push('/');
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      const data = await res.json();
+      if (data.redirectUrl) {
+        window.location.href = data.redirectUrl;
+      } else {
+        router.push('/');
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+      router.push('/');
+    }
   };
 
   // Sandbox Persona Quick-Switch

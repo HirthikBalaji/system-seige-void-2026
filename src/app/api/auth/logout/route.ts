@@ -35,8 +35,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Clear cookie
-  cookieStore.delete('session-token');
+  // Clear cookies
+  cookieStore.set('session-token', '', { maxAge: 0, path: '/' });
+  cookieStore.set('CF_Authorization', '', { maxAge: 0, path: '/' });
+
+  const isMock = process.env.NEXT_PUBLIC_MOCK_CF_ACCESS === 'true';
+  if (!isMock) {
+    const teamDomain = process.env.NEXT_PUBLIC_CF_TEAM_DOMAIN || 'hirthikbalaji.cloudflareaccess.com';
+    const origin = req.nextUrl.origin;
+    return NextResponse.json({ 
+      success: true, 
+      redirectUrl: `https://${teamDomain}/cdn-cgi/access/logout?return_to=${encodeURIComponent(origin)}`
+    });
+  }
 
   return NextResponse.json({ success: true });
 }
