@@ -925,7 +925,7 @@ export default function Dashboard() {
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <KeySquare size={15} color="var(--accent-cyan)" />
-                        Use your own Anthropic API key
+                        Your own API Key
                         {ownApiKey.trim() && <span className="badge badge-cyan" style={{ fontSize: '0.62rem' }}>Active</span>}
                       </span>
                       <span style={{ fontSize: '0.72rem' }}>{showOwnKeyInput ? 'Hide' : 'Optional'}</span>
