@@ -19,6 +19,13 @@ export function middleware(req: NextRequest) {
 
   // If session token is missing, redirect to auth
   if (!sessionToken) {
+    const cfJwt = req.headers.get('CF-Access-Jwt-Assertion') || req.cookies.get('CF_Authorization')?.value;
+
+    if (cfJwt) {
+      // Expose Cloudflare token to callback to establish local session
+      return NextResponse.redirect(new URL(`/api/auth/callback?token=${cfJwt}&redirect=${pathname}`, req.nextUrl.origin));
+    }
+
     const isMock = process.env.NEXT_PUBLIC_MOCK_CF_ACCESS === 'true';
     if (isMock) {
       // For local development, redirect to the sandbox selection landing page
