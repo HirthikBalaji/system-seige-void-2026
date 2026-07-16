@@ -8,7 +8,7 @@ SovereignGuard is deployed exclusively for **Amrita Vishwa Vidyapeetham** and in
 
 - Only authenticated users with an **@ch.amrita.edu** and **ch.students.amrita.edu** email address are allowed to access the platform.
 - Email domain validation is performed immediately after successful Cloudflare Access authentication.
-- Users whose email does **not** belong to the **@am.amrita.edu** domain are denied access before any application session is created.
+- Users whose email does **not** belong to the **@ch.amrita.edu** **ch.students.amrita.edu** domain are denied access before any application session is created.
 - Every first-time authenticated user is automatically provisioned with the **DEVELOPER** role.
 - Administrative privileges (**ORG_ADMIN**, **SECURITY_ADMIN**, **AUDITOR**, **SUPER_ADMIN**, and **SERVICE_ACCOUNT**) are assigned only by an existing administrator.
 - The platform follows the **Principle of Least Privilege**, ensuring users receive only the permissions necessary to begin using the system.
@@ -54,7 +54,7 @@ The gateway validates:
 - Not Before
 - Identity Claims
 
-Only identities with an **@am.amrita.edu** email address are permitted.
+Only identities with an **@ch.amrita.edu** **ch.students.amrita.edu** email address are permitted.
 
 ---
 
@@ -224,7 +224,7 @@ SovereignGuard is intended for internal use within **Amrita Vishwa Vidyapeetham*
 
 The deployment guarantees that:
 
-- Only **@am.amrita.edu** users can authenticate.
+- Only **@ch.amrita.edu** **ch.students.amrita.edu** users can authenticate.
 - Every newly authenticated user automatically receives the **DEVELOPER** role.
 - Administrative roles require explicit approval.
 - All backend operations remain protected by independent authorization checks, encryption, audit logging, and PostgreSQL Row-Level Security.
